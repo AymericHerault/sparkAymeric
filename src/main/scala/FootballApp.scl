@@ -1,0 +1,50 @@
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions.{col, udf,lit}
+import org.apache.spark.sql.functions.{to_date, to_timestamp}
+
+
+object FootballApp extends Serializable {
+
+
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession.builder.appName("FootballApp Scala ").config("spark.master","local").getOrCreate()
+    val df = spark.read.format("csv").option("header", "true").load("src/main/scala/df_matches.csv")
+
+
+    val dfExtracted = extractDataFromCSV(df)
+    dfExtracted.na.fill(0, Array("penalty_france")).show(false)
+    dfExtracted.na.fill(0, Array("penaltyadversaire")).show(false)
+    dfExtracted.filter(dfExtracted("date").gt(lit("1980-01-01")))
+    dfExtracted.withColumn("MatchPlayed",udfIsDomicile(col("match"))).show(50)
+    dfExtracted.show(50)
+    Thread.sleep(1000 * 60 * 10)
+    spark.stop()
+  }
+
+
+  def noPenalty(s: String): Int = s match {
+    case "NA" => 0
+    case => 0
+  }
+  val udfNoPenalty: UserDefinedFunction = udf[Int, String](noPenalty)
+
+  def isDomicile(s: String): Boolean = s match {
+    case if countries.split(" - ")(0)== "France" => true
+    case => false
+  }
+  val udfIsDomicile: UserDefinedFunction = udf[Boolean, String](isDomicile)
+
+  def extractDataFromCSV(df: DataFrame): DataFrame = {
+    val data: DataFrame = df.select(
+      col("X4").alias("match"),
+      col("X6").alias("competition"),
+      col("score_france"),
+      col("score_adversaire"),
+      udfNoPenalty(col("penalty_france")),
+      udfNoPenalty(col("penalty_adversaire")),
+      to_date(col("date"), "yyyy-MM-dd").alias("date")
+    ).persist()
+    data
+  }
+}
